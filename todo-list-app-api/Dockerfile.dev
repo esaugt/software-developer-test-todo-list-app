@@ -1,0 +1,35 @@
+FROM php:8.2-fpm-alpine
+
+RUN apk add --no-cache \
+    bash git unzip libpq postgresql-libs \
+    icu-libs icu-data-full oniguruma
+
+RUN apk add --no-cache $PHPIZE_DEPS postgresql-dev icu-dev oniguruma-dev && \
+    docker-php-ext-configure intl && \
+    docker-php-ext-install -j$(nproc) pdo_pgsql intl opcache && \
+    apk del --no-cache $PHPIZE_DEPS
+
+RUN { \
+      echo "opcache.enable=1"; \
+      echo "opcache.enable_cli=0"; \
+      echo "opcache.memory_consumption=128"; \
+      echo "opcache.interned_strings_buffer=16"; \
+      echo "opcache.max_accelerated_files=20000"; \
+      echo "opcache.validate_timestamps=1"; \
+      echo "opcache.revalidate_freq=1"; \
+    } > /usr/local/etc/php/conf.d/opcache.ini
+
+WORKDIR /var/www/html
+
+# Composer
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+# Cache
+COPY composer.json composer.lock ./
+RUN if [ -f composer.json ]; then composer install --no-scripts --no-progress --prefer-dist; fi
+
+
+COPY . .
+
+EXPOSE 9000
+CMD ["php-fpm", "-F"]
